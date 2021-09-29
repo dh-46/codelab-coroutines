@@ -19,7 +19,10 @@ package com.example.android.kotlincoroutines.main
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.map
 import com.example.android.kotlincoroutines.util.BACKGROUND
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 
 /**
  * TitleRepository provides an interface to fetch a title or request a new one be generated.
@@ -45,8 +48,45 @@ class TitleRepository(val network: MainNetwork, val titleDao: TitleDao) {
 
     // Add coroutines-based `fun refreshTitle` here
     suspend fun refreshTitle() {
-        // TODO: Refresh from network and write to database
-        delay(500)
+        // interact with *blocking* network and IO calls from a coroutine
+        withContext(Dispatchers.IO) {
+            val result = try {
+                // Make network request using a blocking call
+                network.fetchNextTitle().execute()
+            } catch (cause: Throwable) {
+                // If the network throws an exception, inform the caller
+                throw TitleRefreshError("Unable to refresh title", cause)
+            }
+
+            /**
+             * Advanced tip
+             * This code doesn't support coroutine cancellation, but it can!
+             * Coroutine cancellation is cooperative.
+             * That means your code needs to check for cancellation explicitly,
+             * which happens for you whenever you call the functions in kotlinx-coroutines.
+             * Because this withContext block only calls blocking calls it will not be cancelled
+             * until it returns from withContext.
+             *
+             * To fix this, you can call yield regularly
+             * to give other coroutines a chance run and check for cancellation.
+             * Here you would add a call to yield between the network request
+             * and the database query.
+             * Then, if the coroutine is cancelled during the network request,
+             * it won't save the result to the database.
+             *
+             * You can also check cancellation explicitly,
+             * which you should do when making low-level coroutine interfaces.
+             */
+            yield()
+
+            if (result.isSuccessful) {
+                // Save it to database
+                titleDao.insertTitle(Title(result.body()!!))
+            } else {
+                // If it's not successful, inform the callback of the error
+                throw TitleRefreshError("Unable to refresh title", null)
+            }
+        }
     }
 
     /**
@@ -69,12 +109,14 @@ class TitleRepository(val network: MainNetwork, val titleDao: TitleDao) {
                 } else {
                     // If it's not successful, inform the callback of the error
                     titleRefreshCallback.onError(
-                            TitleRefreshError("Unable to refresh title", null))
+                        TitleRefreshError("Unable to refresh title", null)
+                    )
                 }
             } catch (cause: Throwable) {
                 // If anything throws an exception, inform the caller
                 titleRefreshCallback.onError(
-                        TitleRefreshError("Unable to refresh title", cause))
+                    TitleRefreshError("Unable to refresh title", cause)
+                )
             }
         }
     }
