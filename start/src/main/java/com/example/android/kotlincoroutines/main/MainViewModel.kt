@@ -126,17 +126,40 @@ class MainViewModel(private val repository: TitleRepository) : ViewModel() {
      * Refresh the title, showing a loading spinner while it refreshes and errors via snackbar.
      */
     fun refreshTitle() {
-        // TODO: Convert refreshTitle to use coroutines
-        _spinner.value = true
-        repository.refreshTitleWithCallbacks(object : TitleRefreshCallback {
-            override fun onCompleted() {
-                _spinner.postValue(false)
-            }
+        /**
+         *  This will use Dispatchers.Main which is OK.
+         *  Even though refreshTitle will make a network request and database query
+         *  it can use coroutines to expose a main-safe interface.
+         *
+         *  This means it'll be safe to call it from the main thread.
+         */
+        viewModelScope.launch {
+            try {
+                // UI Spinner's status => show
+                _spinner.value = true
 
-            override fun onError(cause: Throwable) {
-                _snackBar.postValue(cause.message)
-                _spinner.postValue(false)
+                /**
+                 * However, since refreshTitle is a suspending function,
+                 * it executes differently than a normal function.
+                 *
+                 * We don't have to pass a callback.
+                 * The coroutine will suspend until it is resumed by refreshTitle.
+                 * While it looks just like a regular blocking function call,
+                 * it will automatically wait until the network and database query
+                 * are complete before resuming without blocking the main thread.
+                 */
+                repository.refreshTitle()
+            } catch (error: TitleRefreshError) {
+                /**
+                 *  if you throw an exception out of a coroutine –
+                 *  that coroutine will cancel it's parent by default.
+                 *  That means it's easy to cancel several related tasks together.
+                 */
+                _snackBar.value = error.message
+            } finally {
+                // UI Spinner's status => hide
+                _spinner.value = false
             }
-        })
+        }
     }
 }
