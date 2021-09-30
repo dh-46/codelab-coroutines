@@ -17,6 +17,12 @@
 package com.example.android.kotlincoroutines.main
 
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import com.example.android.kotlincoroutines.fakes.MainNetworkCompletableFake
+import com.example.android.kotlincoroutines.fakes.MainNetworkFake
+import com.example.android.kotlincoroutines.fakes.TitleDaoFake
+import com.google.common.truth.Truth
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runBlockingTest
 import org.junit.Rule
 import org.junit.Test
 
@@ -25,14 +31,53 @@ class TitleRepositoryTest {
     @get:Rule
     val instantTaskExecutorRule = InstantTaskExecutorRule()
 
+//    @Test
+//    fun whenRefreshTitleSuccess_insertsRows() {
+//        val subject = TitleRepository(
+//            MainNetworkFake("OK"),
+//            TitleDaoFake("title")
+//        )
+//
+//        // launch starts a coroutine then immediately returns
+//        GlobalScope.launch {
+//            // since this is asynchronous code, this may be called *after* the test completes
+//            subject.refreshTitle()
+//        }
+//        // test function returns immediately, and
+//        // doesn't see the results of refreshTitle
+//    }
+
     @Test
-    fun whenRefreshTitleSuccess_insertsRows() {
-        // TODO: Write this test
+    fun whenRefreshTitleSuccess_insertsRows() = runBlockingTest{
+        val titleDao = TitleDaoFake("title")
+        val subject = TitleRepository(
+            MainNetworkFake("OK"),
+            titleDao
+        )
+
+        subject.refreshTitle()
+        Truth.assertThat(titleDao.nextInsertedOrNull()).isEqualTo("OK")
     }
 
+    /**
+     * This test uses the provided fake MainNetworkCompletableFake,
+     * which is a network fake that's designed to suspend callers until the test continues them.
+     * When refreshTitle tries to make a network request,
+     * it'll hang forever because we want to test timeouts.
+     *
+     */
     @Test(expected = TitleRefreshError::class)
-    fun whenRefreshTitleTimeout_throws() {
-        // TODO: Write this test
-        throw TitleRefreshError("Remove this – made test pass in starter code", null)
+    fun whenRefreshTitleTimeout_throws() = runBlockingTest{
+        val network = MainNetworkCompletableFake()
+        val subject = TitleRepository(
+            network,
+            TitleDaoFake("title")
+        )
+
+        launch {
+            subject.refreshTitle()
+        }
+
+        advanceTimeBy(5_000)
     }
 }
