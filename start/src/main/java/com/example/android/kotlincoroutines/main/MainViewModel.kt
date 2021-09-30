@@ -20,8 +20,8 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.android.kotlincoroutines.util.BACKGROUND
 import com.example.android.kotlincoroutines.util.singleArgViewModelFactory
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -126,38 +126,74 @@ class MainViewModel(private val repository: TitleRepository) : ViewModel() {
      * Refresh the title, showing a loading spinner while it refreshes and errors via snackbar.
      */
     fun refreshTitle() {
-        /**
-         *  This will use Dispatchers.Main which is OK.
-         *  Even though refreshTitle will make a network request and database query
-         *  it can use coroutines to expose a main-safe interface.
-         *
-         *  This means it'll be safe to call it from the main thread.
-         */
-        viewModelScope.launch {
-            try {
-                // UI Spinner's status => show
-                _spinner.value = true
+        launchDataLoad {
+            repository.refreshTitle()
+        }
 
-                /**
-                 * However, since refreshTitle is a suspending function,
-                 * it executes differently than a normal function.
-                 *
-                 * We don't have to pass a callback.
-                 * The coroutine will suspend until it is resumed by refreshTitle.
-                 * While it looks just like a regular blocking function call,
-                 * it will automatically wait until the network and database query
-                 * are complete before resuming without blocking the main thread.
-                 */
-                repository.refreshTitle()
+//        /**
+//         *  This will use Dispatchers.Main which is OK.
+//         *  Even though refreshTitle will make a network request and database query
+//         *  it can use coroutines to expose a main-safe interface.
+//         *
+//         *  This means it'll be safe to call it from the main thread.
+//         */
+//        viewModelScope.launch {
+//            try {
+//                // UI Spinner's status => show
+//                _spinner.value = true
+//
+//                /**
+//                 * However, since refreshTitle is a suspending function,
+//                 * it executes differently than a normal function.
+//                 *
+//                 * We don't have to pass a callback.
+//                 * The coroutine will suspend until it is resumed by refreshTitle.
+//                 * While it looks just like a regular blocking function call,
+//                 * it will automatically wait until the network and database query
+//                 * are complete before resuming without blocking the main thread.
+//                 */
+//                repository.refreshTitle()
+//            } catch (error: TitleRefreshError) {
+//                /**
+//                 *  if you throw an exception out of a coroutine –
+//                 *  that coroutine will cancel it's parent by default.
+//                 *  That means it's easy to cancel several related tasks together.
+//                 */
+//                _snackBar.value = error.message
+//            } finally {
+//                // UI Spinner's status => hide
+//                _spinner.value = false
+//            }
+//        }
+    }
+
+    /**
+     * By abstracting the logic around showing a loading spinner and showing errors,
+     * we've simplified our actual code needed to load data.
+     * Showing a spinner or displaying an error is something
+     * that's easy to generalize to any data loading,
+     * while the actual data source and destination needs to be specified every time.
+     *
+     * To build this abstraction,
+     * launchDataLoad takes an argument block that is a suspend lambda.
+     * A suspend lambda allows you to call suspend functions.
+     * That's how Kotlin implements the coroutine builders launch and runBlocking
+     * we've been using in this codelab.
+     *
+     * // "block: suspend () -> Unit" => suspend lambda
+     *
+     * @param block
+     * @receiver
+     * @return
+     */
+    private fun launchDataLoad(block: suspend () -> Unit): Job {
+        return viewModelScope.launch {
+            try {
+                _spinner.value = true
+                block()
             } catch (error: TitleRefreshError) {
-                /**
-                 *  if you throw an exception out of a coroutine –
-                 *  that coroutine will cancel it's parent by default.
-                 *  That means it's easy to cancel several related tasks together.
-                 */
                 _snackBar.value = error.message
             } finally {
-                // UI Spinner's status => hide
                 _spinner.value = false
             }
         }
