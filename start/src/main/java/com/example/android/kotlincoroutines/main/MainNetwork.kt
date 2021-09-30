@@ -43,8 +43,20 @@ fun getNetworkService() = service
  * Main network interface which will fetch a new welcome title for us
  */
 interface MainNetwork {
+
+    /**
+     * Fetch next title
+     *
+     * Here we're returning String, but you could return complex json-backed type as well.
+     * If you still wanted to provide access to Retrofit's full Result,
+     * you can return Result<String> instead of String from the suspend function.
+     *
+     * Retrofit will automatically make suspend functions main-safe
+     * so you can call them directly from Dispatchers.Main.
+     * @return
+     */
     @GET("next_title.json")
-    fun fetchNextTitle(): Call<String>
+    suspend fun fetchNextTitle(): String
 }
 
 

@@ -39,8 +39,12 @@ data class Title constructor(val title: String, @PrimaryKey val id: Int = 0)
  */
 @Dao
 interface TitleDao {
+
+    // add the suspend modifier to the existing insertTitle
+    // Room will make your query main-safe and execute it on a background thread automatically.
+    // also means that you can only call this query from inside a coroutine.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertTitle(title: Title)
+    suspend fun insertTitle(title: Title)
 
     @get:Query("select * from Title where id = 0")
     val titleLiveData: LiveData<Title?>
